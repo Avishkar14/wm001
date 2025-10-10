@@ -1,0 +1,126 @@
+
+
+val sqlStmt1 = "select * from temp_bi.sumt_anls_eigen_value_1_0725"
+val positiveSample = sqlContext.sql(sqlStmt1)
+
+val sqlStmt2 = "select * from temp_bi.sumt_anls_eigen_value_0_0725"
+val negativeSample = sqlContext.sql(sqlStmt2)
+
+import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.mllib.util.MLUtils
+import org.apache.spark.mllib.regression.LabeledPoint
+import org.apache.spark.mllib.linalg.Vectors
+import org.apache.spark.sql.{DataFrame, Row, SQLContext}
+import org.apache.spark.mllib.linalg.DenseVector
+import org.apache.spark.sql.hive.HiveContext
+import org.apache.spark.mllib.evaluation.BinaryClassificationMetrics
+import java.math.BigDecimal
+import org.apache.spark.rdd.RDD
+import org.apache.spark.mllib.classification.{SVMModel, SVMWithSGD}
+import org.apache.spark.mllib.linalg.distributed.RowMatrix
+import org.apache.spark.mllib.feature.StandardScaler
+
+def featureTransformV5(data: DataFrame, label: Int) = {
+val cataValueMap: Map[String, Int] = Map("1_女装"->1, "2_男装"->2, "3_内衣"->3, "4_鞋类"->4, "5_箱包"->5,
+	"6a_彩妆"->6, "6b_护肤"->7, "7_亲子"->8, "7a_奶粉"->9, "8_体用户外"->10,
+	"9_家电"->11, "9a_手机通讯"->12, "10_家居家纺"->13, "11_精品"->14, "11a_珠宝饰品"->15,
+	"11b_钟表"->16, "12_食品"->17, "13_汽车用品"->18, "14_实体票券"->19, "15_图书"->20,
+	"多品类"->21, "16其他"->22, "无"->23)
+val vmarkValueMap: Map[String, Int] = Map("皇冠"->1, "钻石"->2, "金牌"->3, "银牌"->4, "铜牌"->5, "铁牌"->6)
+val fstSourceValueMap: Map[String, Int] = Map("mobile"->0, "pc"->1, "unknown"->1)  
+val rdd = data.map( a=> {
+  val dimension = 69
+  val featureArray:Array[Double] = new Array[Double](dimension) 
+  featureArray(0) = a.getDouble(5)
+  featureArray(1) = a.getDouble(6)
+  for(i <- 2 to 8){
+	featureArray(i) = a.getLong(i + 6).toDouble
+  }
+  featureArray(9) = a.getDouble(15)
+  featureArray(10) = a.getDecimal(16).doubleValue()
+  featureArray(11) = a.getLong(17).toDouble
+  featureArray(12) = a.getDouble(18)
+  featureArray(13) = a.getInt(23).toDouble
+  featureArray(14) = a.getInt(24).toDouble
+  featureArray(15) = a.getInt(25).toDouble
+  val vmark_name = a.getString(26).trim()
+  val vmark_name_index = vmarkValueMap(vmark_name) + 15
+  featureArray(vmark_name_index) = 1.0
+  featureArray(22) = a.getLong(27).toDouble
+  val max_hist_goods_cate = a.getString(28).trim()
+  val max_hist_goods_cate_index = cataValueMap(max_hist_goods_cate) + 22
+  featureArray(max_hist_goods_cate_index) = 1.0
+  featureArray(46) = a.getDouble(29)
+  val fst_source = a.getString(30).trim()
+  featureArray(47) = fstSourceValueMap(fst_source)
+  for(i <- 48 to 68){
+	featureArray(i) = a.getLong(i - 17).toDouble
+  }
+  val vector = new DenseVector(featureArray)
+  LabeledPoint(label, vector)
+})
+rdd
+} 
+
+val allPositive = featureTransformV5(positiveSample, 1)
+val allNegative = featureTransformV5(negativeSample, 0)
+allPositive.persist()
+allNegative.persist()
+
+val rddForScaler = allPositive.union(allNegative)
+val vectorsForScaler = rddForScaler.map(point => point.features)
+val scaler = new StandardScaler(withMean = true, withStd = true).fit(vectorsForScaler)
+
+val scaledAllPositive = allPositive.map(point => LabeledPoint(point.label, scaler.transform(point.features)))
+val scaledAllNegative = allNegative.map(point => LabeledPoint(point.label, scaler.transform(point.features)))
+allPositive.unpersist()
+allNegative.unpersist()
+
+val Array(positiveTrain, positiveTest) = scaledAllPositive.randomSplit(Array(0.7, 0.3))
+positiveTrain.persist()
+
+val Array(negativePart0, negativePart1) = scaledAllNegative.randomSplit(Array(0.05, 0.95))
+val Array(negativeTrain, negativeTest) = negativePart0.randomSplit(Array(0.7, 0.3))
+val testData1 = positiveTest.union(negativeTest)
+testData1.persist()
+val testData = testData1.union(negativePart1)
+testData.persist()
+
+val modelNum = 5
+val sampleRateArray = new Array[Double](modelNum)
+for(i <- 0 until modelNum)
+  sampleRateArray(i) = 1.0/modelNum
+val negativeTrainSplits = negativeTrain.randomSplit(sampleRateArray)
+
+val ensembleModel = negativeTrainSplits.map{ negativeTrainPart =>
+val trainDataForOneModel = positiveTrain.union(negativeTrainPart).repartition(1000)
+val iters = 30
+val regParam = 0.1
+val svmSetting = new SVMWithSGD()
+svmSetting.optimizer.setNumIterations(iters).setRegParam(regParam)
+val model = svmSetting.run(trainDataForOneModel)
+model.clearThreshold()
+model
+}
+
+val predsAndLabel = testData.map{ point =>
+val predictPositiveNum = ensembleModel.map{ svmModel =>
+ val score = svmModel.predict(point.features)
+ val threshold = 0.0
+ if(score > threshold) 1.0 else 0.0
+}.sum
+val predictResult = if(predictPositiveNum > modelNum/2) 1.0 else 0.0
+(predictResult, point.label)
+}
+
+val predictPositive = predsAndLabel.filter(a => a._1 == 1.0).cache()
+val predictPositiveNum = predictPositive.count()
+val truePositiveNum = predictPositive.filter(a => a._2 == 1.0).count()
+val testDataPositiveNum = testData.filter(a => a.label == 1.0).count()
+
+println("************************* modelNum: " + modelNum)
+println("************************* precison: "+ truePositiveNum.toDouble / predictPositiveNum)
+println("************************* testDataPositiveNum: " + testDataPositiveNum)
+println("************************* predictPositiveNum: " + predictPositiveNum)
+println("************************* truePositiveNum: " + truePositiveNum)
+println("done")
